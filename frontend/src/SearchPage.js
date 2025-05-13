@@ -2,11 +2,13 @@ import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import Navbar from "./Navbar";
+import axiosInstance from "./axiosConfig";
 
 const SearchPage = () => {
   const [filter, setFilter] = useState("");
   const [listName, setListName] = useState("");
   const [matchedCodes, setMatchedCodes] = useState([]);
+  const [showCat, setShowCat] = useState(false);
   const navigate = useNavigate();
 
   const getMatchedCodes = (filter) => {
@@ -20,23 +22,29 @@ const SearchPage = () => {
       500, 501, 502, 503, 504, 505, 506, 507, 508, 510, 511
     ];
 
-    if (!filter) return [];
+    if (!filter) {
+      setShowCat(false);
+      return [];
+    }
+
+    let matched = [];
 
     if (/^\d{3}$/.test(filter)) {
       // Exact match like 203
       const code = parseInt(filter);
-      return validCodes.includes(code) ? [code] : [];
+      matched = validCodes.includes(code) ? [code] : [];
     } else if (/^\d{1}xx$/.test(filter)) {
       // Match like 2xx => 200-299
       const prefix = filter[0];
-      return validCodes.filter((code) => code.toString().startsWith(prefix));
+      matched = validCodes.filter((code) => code.toString().startsWith(prefix));
     } else if (/^\d{2}x$/.test(filter)) {
       // Match like 20x => 200-209
       const prefix = filter.slice(0, 2);
-      return validCodes.filter((code) => code.toString().startsWith(prefix));
+      matched = validCodes.filter((code) => code.toString().startsWith(prefix));
     }
 
-    return [];
+    setShowCat(matched.length === 0 && filter !== "");
+    return matched;
   };
 
   const handleSearch = () => {
@@ -56,19 +64,22 @@ const SearchPage = () => {
     };
 
     try {
-        const token = localStorage.getItem('token');
-        // console.log(token) 
-        // const token  = localStorage.getItem(token);
-      const res = await axios.post("http://localhost:5000/api/saveList", data, {
+      const token = localStorage.getItem('token');
+      const res = await axiosInstance.post('/saveList', data, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
       alert("List saved successfully!");
       setListName(""); // clear input
-    } catch (err) {
-      console.error("Error saving list:", err);
-      alert("Failed to save the list.");
+    } catch (error) {
+      if (error.response?.data?.code === "DUPLICATE_NAME") {
+        // Show popup for duplicate name
+        alert(error.response.data.error); 
+      } else {
+        console.error("Error saving list:", error);
+        alert("Failed to save the list.");
+      }
     }
   };
 
@@ -78,64 +89,75 @@ const SearchPage = () => {
 
   return (
     <>
-    <Navbar/>
-    <div className="p-6 max-w-3xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Search HTTP Dog Images</h1>
+      <Navbar/>
+      <div className="p-6 max-w-3xl mx-auto">
+        <h1 className="text-2xl font-bold mb-4">Search HTTP Dog Images</h1>
 
-      {/* Filter input and Search button */}
-      <div className="mb-4 flex gap-4">
-        <input
-          type="text"
-          placeholder="Enter code (e.g., 203, 2xx, 20x)"
-          className="border p-2 flex-1"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-        <button 
-          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" 
-          onClick={handleSearch}
-        >
-          Search
-        </button>
-      </div>
+        {/* Filter input and Search button */}
+        <div className="mb-4 flex gap-4">
+          <input
+            type="text"
+            placeholder="Enter code (e.g., 203, 2xx, 20x)"
+            className="border p-2 flex-1"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+          <button 
+            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" 
+            onClick={handleSearch}
+          >
+            Search
+          </button>
+        </div>
 
-      {/* Results grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 my-6">
-        {matchedCodes.map((code) => (
-          <div key={code} className="text-center">
-            <img 
-              src={`https://http.dog/${code}.jpg`} 
-              alt={`HTTP ${code}`} 
-              className="rounded shadow" 
+        {/* Results grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 my-6">
+          {showCat ? (
+            <div className="col-span-full text-center">
+              <p className="text-red-500 mb-4">No matching HTTP codes found</p>
+              <img 
+                src="/cat.png" 
+                alt="No codes found" 
+                className="mx-auto max-w-xs rounded shadow" 
+              />
+            </div>
+          ) : (
+            matchedCodes.map((code) => (
+              <div key={code} className="text-center">
+                <img 
+                  src={`https://http.dog/${code}.jpg`} 
+                  alt={`HTTP ${code}`} 
+                  className="rounded shadow" 
+                />
+                <p className="mt-2 font-medium">{code}</p>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Save input and buttons */}
+          <div className="mt-6 flex gap-4 items-center">
+            <input
+              type="text"
+              placeholder="Enter list name"
+              className="border p-2 flex-1"
+              value={listName}
+              onChange={(e) => setListName(e.target.value)}
             />
-            <p className="mt-2 font-medium">{code}</p>
+            <button 
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" 
+              onClick={handleSave}
+            >
+              Save List
+            </button>
+            <button 
+              className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+              onClick={handleShowList}
+            >
+              Show List
+            </button>
           </div>
-        ))}
       </div>
-
-      {/* Save input and buttons */}
-      <div className="mt-6 flex gap-4 items-center">
-        <input
-          type="text"
-          placeholder="Enter list name"
-          className="border p-2 flex-1"
-          value={listName}
-          onChange={(e) => setListName(e.target.value)}
-        />
-        <button 
-          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" 
-          onClick={handleSave}
-        >
-          Save List
-        </button>
-        <button 
-          className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
-          onClick={handleShowList}
-        >
-          Show List
-        </button>
-      </div>
-    </div>
     </>
   );
 };

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Navbar from './Navbar';
+import axiosInstance from "./axiosConfig";
 
 const ShowList = () => {
   const [lists, setLists] = useState([]);
@@ -16,7 +17,7 @@ const ShowList = () => {
   const token = localStorage.getItem('token');
   const fetchLists = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/getLists',{
+      const response = await axiosInstance.get('/getLists',{
         headers: {
           Authorization: `Bearer ${token}`
         }
@@ -35,7 +36,7 @@ const ShowList = () => {
   const handleDelete = async (listId) => {
     try {
       if (window.confirm('This will delete the entire list. Continue?')) {
-        await axios.delete(`http://localhost:5000/api/deleteList/${listId}`,{
+        await axiosInstance.delete(`/deleteList/${listId}`,{
           headers: {
             Authorization: `Bearer ${token}`
           }
@@ -87,7 +88,7 @@ const ShowList = () => {
       if (updatedCodes.length === 0) {
         // Confirm before deleting the entire list
         if (window.confirm('This will delete the entire list as it will be empty. Continue?')) {
-          await axios.delete(`http://localhost:5000/api/deleteList/${listId}`,{
+          await axiosInstance.delete(`/deleteList/${listId}`,{
             headers: {
               Authorization: `Bearer ${token}`
             }
@@ -97,7 +98,7 @@ const ShowList = () => {
         }
       } else {
         // Otherwise just update the list
-        await axios.put(`http://localhost:5000/api/updateList/${listId}`, {
+        await axiosInstance.put(`/updateList/${listId}`, {
           codes: updatedCodes,
           imageUrls: updatedImageUrls
         },{
@@ -116,7 +117,7 @@ const ShowList = () => {
 
   const handleUpdateName = async (listId) => {
     try {
-      await axios.put(`http://localhost:5000/api/updateList/${listId}`, {
+      await axiosInstance.put(`/updateList/${listId}`, {
         name: newListName
       },{
         headers: {
@@ -126,7 +127,13 @@ const ShowList = () => {
       setEditingList(null);
       fetchLists();
     } catch (error) {
-      console.error('Error updating list name:', error);
+      if (error.response?.data?.code === "DUPLICATE_NAME") {
+        // Show popup for duplicate name
+        alert(error.response.data.error); 
+      } else {
+        console.error("Error Updating list:", error);
+        alert("You already have a list with this name");
+      }
     }
   };
 

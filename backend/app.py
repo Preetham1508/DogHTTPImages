@@ -6,9 +6,15 @@ from bson import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
 from functools import wraps
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+CLIENT_ORIGIN = os.getenv('CLIENT_ORIGIN')
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}}, supports_credentials=True)
+CORS(app, resources={r"/api/*": {"origins": [CLIENT_ORIGIN]}}, supports_credentials=True)
 app.config['SECRET_KEY'] = 'my_secret'
 
 # MongoDB setup
@@ -100,7 +106,19 @@ def login():
 def protected(current_user):
     return jsonify({'message': f'Hello {current_user["name"]}, this is protected!'})
 
-# Save a list
+def validate_list_name(user_id, name, list_id=None):
+    """Check if a list name already exists for this user (excluding current list if updating)"""
+    query = {
+        "name": name,
+        "user_id": str(user_id)
+    }
+    if list_id:
+        query["_id"] = {"$ne": ObjectId(list_id)}
+    
+    existing = lists_collection.find_one(query)
+    return existing is None
+
+# Save a list (with duplicate name prevention)
 @app.route('/api/saveList', methods=['POST'])
 @token_required
 def save_list(current_user):
@@ -112,16 +130,26 @@ def save_list(current_user):
     if not name or not codes or not imageUrls:
         return jsonify({"error": "Missing required fields"}), 400
 
+    # Check for duplicate name
+    if not validate_list_name(current_user['_id'], name):
+        return jsonify({
+            "error": "You already have a list with this name",
+            "code": "DUPLICATE_NAME"
+        }), 409
+
     new_list = {
         "name": name,
         "codes": codes,
         "imageUrls": imageUrls,
         "createdAt": datetime.utcnow(),
-        "user_id": str(current_user['_id'])  # Add user_id to the list
+        "user_id": str(current_user['_id'])
     }
 
     result = lists_collection.insert_one(new_list)
-    return jsonify({"message": "List saved", "id": str(result.inserted_id)}), 201
+    return jsonify({
+        "message": "List saved",
+        "id": str(result.inserted_id)
+    }), 201
 
 # Get all lists for the current user
 @app.route('/api/getLists', methods=['GET'])
@@ -149,16 +177,26 @@ def delete_list(current_user, list_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-# Update a list (only if it belongs to the current user)
+# Update a list (with duplicate name prevention and only if it belongs to the current user)
 @app.route('/api/updateList/<list_id>', methods=['PUT'])
 @token_required
 def update_list(current_user, list_id):
     data = request.json
     try:
-        if 'codes' in data and 'imageUrls' in data:
-            if len(data['codes']) == 0 or len(data['imageUrls']) == 0:
-                return jsonify({"error": "Cannot have empty codes or imageUrls"}), 400
+        # Validate ObjectId format first
+        if not ObjectId.is_valid(list_id):
+            return jsonify({"error": "Invalid list ID format"}), 400
 
+        # Check for empty codes/imageUrls if they're being updated
+        if ('codes' in data or 'imageUrls' in data) and (not data.get('codes') or not data.get('imageUrls')):
+            return jsonify({"error": "Cannot have empty codes or imageUrls"}), 400
+
+        # Check for duplicate name if name is being updated
+        if 'name' in data and data['name']:
+            if not validate_list_name(current_user['_id'], data['name'], list_id):
+                return jsonify({"error": "You already have another list with this name"}), 409
+
+        # Prepare update data
         update_data = {}
         if 'name' in data:
             update_data['name'] = data['name']
@@ -166,20 +204,28 @@ def update_list(current_user, list_id):
             update_data['codes'] = data['codes']
             update_data['imageUrls'] = data['imageUrls']
 
-        if update_data:
-            result = lists_collection.update_one(
-                {
-                    "_id": ObjectId(list_id),
-                    "user_id": str(current_user['_id'])  # Only update if the list belongs to the user
-                },
-                {"$set": update_data}
-            )
-            if result.modified_count == 1:
-                return jsonify({"message": "List updated successfully"})
+        if not update_data:
+            return jsonify({"message": "No valid fields to update"}), 400
 
-        return jsonify({"message": "No changes detected"})
+        # Perform the update
+        result = lists_collection.update_one(
+            {
+                "_id": ObjectId(list_id),
+                "user_id": str(current_user['_id'])
+            },
+            {"$set": update_data}
+        )
+
+        if result.matched_count == 0:
+            return jsonify({"error": "List not found or not authorized"}), 404
+
+        return jsonify({
+            "message": "List updated successfully",
+            "modified_count": result.modified_count
+        })
+
     except Exception as e:
         return jsonify({"error": str(e)}), 400
-
+    
 if __name__ == '__main__':
     app.run(debug=True)
