@@ -6,7 +6,7 @@ node_modules/
 # Python
 __pycache__/
 *.pyc
-env/
+
 venv/
 App.py
 test.py
@@ -14,4 +14,4 @@ test.py
 # Others
 *.log
 .DS_Store
-.env
+
