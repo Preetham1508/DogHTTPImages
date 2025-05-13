@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import axiosInstance from "./axiosConfig";
 
 const Auth = ({ type }) => {
   const [formData, setFormData] = useState({
@@ -49,8 +50,8 @@ const Auth = ({ type }) => {
     }}
 
     try {
-      const endpoint = type === 'login' ? '/api/login' : '/api/signup';
-      const response = await axios.post(`http://localhost:5000${endpoint}`, formData);
+      const endpoint = type === 'login' ? '/login' : '/signup';
+      const response = await axiosInstance.post(`${endpoint}`, formData);
 
       localStorage.setItem('token', response.data.token);
       navigate('/search');
